@@ -1,45 +1,53 @@
-
 from data import centers, distances, cost_per_km
-from itertools import permutations
+from itertools import permutations, product
+import math
 
 def get_product_centers():
-    prod_map = {}
-    for center, products in centers.items():
-        for p in products:
-            prod_map.setdefault(p, []).append(center)
-    return prod_map
+    product_sources = {}
+    for center, items in centers.items():
+        for item in items:
+            product_sources.setdefault(item, []).append(center)
+    return product_sources
 
-def calculate_distance(path):
-    total_distance = 0
-    for i in range(len(path) - 1):
-        pair = (path[i], path[i+1])
-        if pair not in distances:
-            pair = (path[i+1], path[i])  # reverse
-        total_distance += distances.get(pair, 0)
-    return total_distance
+def get_distance(a, b):
+    return distances.get((a, b)) or distances.get((b, a)) or 0
+
+def generate_plans(order, product_sources):
+    options = []
+    for item, qty in order.items():
+        if qty == 0 or item not in product_sources:
+            continue
+        sources = product_sources[item]
+        options.append([(item, source) for source in sources])
+    return list(product(*options))
+
+def route_cost(start_center, plan):
+    steps = []
+    visited = set()
+    inventory = {}
+    for item, center in plan:
+        inventory.setdefault(center, []).append(item)
+        visited.add(center)
+    visited.add("L1")
+    best_cost = math.inf
+    for mid_route in permutations(visited):
+        if mid_route[0] != start_center:
+            continue
+        if "L1" not in mid_route:
+            continue
+        total = 0
+        for i in range(len(mid_route) - 1):
+            total += get_distance(mid_route[i], mid_route[i + 1])
+        best_cost = min(best_cost, total)
+    return best_cost * cost_per_km
 
 def calculate_minimum_cost(order):
-    prod_map = get_product_centers()
-    
-    # Get all required products and which centers can fulfill them
-    required_centers = set()
-    for product in order:
-        if order[product] > 0 and product in prod_map:
-            required_centers.update(prod_map[product])
-
-    min_cost = float('inf')
-
-    # Try all starting points (C1, C2, C3)
-    for start_center in centers:
-        if start_center not in required_centers:
-            continue
-        # All permutations of pickup and delivery
-        for path in permutations(required_centers):
-            if path[0] != start_center:
-                continue
-            full_path = list(path) + ["L1"]
-            total_distance = calculate_distance(full_path)
-            total_cost = total_distance * cost_per_km
-            min_cost = min(min_cost, total_cost)
-
-    return min_cost if min_cost != float('inf') else 0
+    product_sources = get_product_centers()
+    all_plans = generate_plans(order, product_sources)
+    best = math.inf
+    for plan in all_plans:
+        centers_in_plan = set(center for _, center in plan)
+        for start in centers_in_plan:
+            cost = route_cost(start, plan)
+            best = min(best, cost)
+    return best if best != math.inf else 0
