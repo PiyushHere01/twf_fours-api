@@ -1,5 +1,5 @@
 from data import centers, distances, cost_per_km
-from itertools import permutations, product
+from itertools import permutations
 import math
 
 def get_product_centers():
@@ -12,42 +12,49 @@ def get_product_centers():
 def get_distance(a, b):
     return distances.get((a, b)) or distances.get((b, a)) or 0
 
-def generate_plans(order, product_sources):
-    options = []
-    for item, qty in order.items():
-        if qty == 0 or item not in product_sources:
-            continue
-        sources = product_sources[item]
-        options.append([(item, source) for source in sources])
-    return list(product(*options))
-
-def route_cost(start_center, plan):
-    steps = []
-    visited = set()
-    inventory = {}
-    for item, center in plan:
-        inventory.setdefault(center, []).append(item)
-        visited.add(center)
-    visited.add("L1")
-    best_cost = math.inf
-    for mid_route in permutations(visited):
-        if mid_route[0] != start_center:
-            continue
-        if "L1" not in mid_route:
-            continue
-        total = 0
-        for i in range(len(mid_route) - 1):
-            total += get_distance(mid_route[i], mid_route[i + 1])
-        best_cost = min(best_cost, total)
-    return best_cost * cost_per_km
-
 def calculate_minimum_cost(order):
     product_sources = get_product_centers()
-    all_plans = generate_plans(order, product_sources)
-    best = math.inf
-    for plan in all_plans:
-        centers_in_plan = set(center for _, center in plan)
-        for start in centers_in_plan:
-            cost = route_cost(start, plan)
-            best = min(best, cost)
-    return best if best != math.inf else 0
+
+    product_to_center = {}
+    involved_centers = set()
+
+    for product, qty in order.items():
+        if qty == 0:
+            continue
+        if product not in product_sources:
+            return -1
+        assigned_center = product_sources[product][0]
+        product_to_center.setdefault(assigned_center, []).append(product)
+        involved_centers.add(assigned_center)
+
+    involved_centers = list(involved_centers)
+
+    best_cost = math.inf
+
+    for start_center in involved_centers:
+        route = [start_center]
+        visited = set()
+        inventory = set()
+        total_distance = 0
+        remaining_centers = set(involved_centers)
+
+        current = start_center
+
+        if start_center in product_to_center:
+            inventory.update(product_to_center[start_center])
+        total_distance += get_distance(current, "L1")
+        current = "L1"
+        total_distance += get_distance(current, start_center)
+        current = start_center
+        remaining_centers.remove(start_center)
+
+        for center in remaining_centers:
+            total_distance += get_distance(current, center)
+            current = center
+            total_distance += get_distance(current, "L1")
+            current = "L1"
+
+        total_cost = total_distance * cost_per_km
+        best_cost = min(best_cost, total_cost)
+
+    return best_cost
